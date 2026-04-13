@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real ou IA? - JOGADOR</title>
+    <style>
+        :root { --purple: #46178f; --green: #26890c; --red: #e21b3c; --blue: #1368ce; }
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: var(--purple); color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        .btn { width: 100%; max-width: 400px; height: 100px; margin: 10px 0; font-size: 24px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; color: white; text-transform: uppercase; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+        .real { background: var(--green); box-shadow: 0 6px #1a5e08; }
+        .ia { background: var(--red); box-shadow: 0 6px #a0132a; }
+        input { padding: 15px; width: 80%; max-width: 300px; font-size: 18px; border-radius: 8px; border: none; margin-bottom: 20px; text-align: center; }
+        #tela-nick, #tela-espera, #tela-jogo { width: 100%; display: none; }
+        .waiting-animation { font-style: italic; opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+    <div id="tela-nick">
+        <h1>🎮 Real ou IA?</h1>
+        <input type="text" id="nome-input" placeholder="Seu Apelido...">
+        <button class="btn" style="background: var(--blue); height: 60px;" onclick="entrarNoJogo()">ENTRAR</button>
+    </div>
+
+    <div id="tela-espera">
+        <h1 id="status-msg">Aguardando o Host iniciar...</h1>
+        <p class="waiting-animation">Prepare seus olhos...</p>
+    </div>
+
+    <div id="tela-jogo">
+        <h2>ESCOLHA RÁPIDO!</h2>
+        <button id="btn-real" class="btn real" onclick="enviarResposta('real')">REAL</button>
+        <button id="btn-ia" class="btn ia" onclick="enviarResposta('ia')">IA</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, get, update } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-database.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "SUA_API_KEY",
+            authDomain: "SEU_PROJETO.firebaseapp.com",
+            databaseURL: "https://SEU_PROJETO.firebaseio.com",
+            projectId: "SEU_PROJETO",
+            storageBucket: "SEU_PROJETO.appspot.com",
+            messagingSenderId: "ID",
+            appId: "APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        // CONFIGURAÇÃO DAS RESPOSTAS (Deve ser igual ao do Admin)
+        const gabarito = ["ia", "real", "real", "ia", "ia", "real", "real", "ia", "ia", "real"];
+        
+        let meuUID, meuNome, jaRespondeu = false;
+
+        signInAnonymously(auth).then(user => {
+            meuUID = user.user.uid;
+            document.getElementById('tela-nick').style.display = 'block';
+        });
+
+        window.entrarNoJogo = async () => {
+            meuNome = document.getElementById('nome-input').value.trim();
+            if(!meuNome) return alert("Digite um nome!");
+            await set(ref(db, `jogadores/${meuUID}`), { nome: meuNome, pontos: 0 });
+            document.getElementById('tela-nick').style.display = 'none';
+            document.getElementById('tela-espera').style.display = 'block';
+        };
+
+        onValue(ref(db, 'jogo'), (snapshot) => {
+            const data = snapshot.val();
+            if(!data) return;
+
+            if(data.status === 'pergunta') {
+                jaRespondeu = false;
+                document.getElementById('tela-espera').style.display = 'none';
+                document.getElementById('tela-jogo').style.display = 'block';
+            } else {
+                document.getElementById('tela-espera').style.display = 'block';
+                document.getElementById('tela-jogo').style.display = 'none';
+                if(data.status === 'pódio') document.getElementById('status-msg').innerText = "Fim de Jogo! Olhe a TV!";
+            }
+        });
+
+        window.enviarResposta = async (escolha) => {
+            if(jaRespondeu) return;
+            jaRespondeu = true;
+            
+            const snap = await get(ref(db, 'jogo'));
+            const jogo = snap.val();
+            const correta = gabarito[jogo.perguntaAtual];
+
+            if(escolha === correta) {
+                const delay = Date.now() - jogo.timestamp;
+                const pontosGanhos = Math.max(500, 1000 - Math.floor(delay / 20));
+                const playerRef = ref(db, `jogadores/${meuUID}`);
+                const pSnap = await get(playerRef);
+                const atual = pSnap.val().pontos || 0;
+                await update(playerRef, { pontos: atual + pontosGanhos });
+            }
+
+            document.getElementById('tela-jogo').style.display = 'none';
+            document.getElementById('tela-espera').style.display = 'block';
+            document.getElementById('status-msg').innerText = "Enviado! Aguardando resultado...";
+        };
+    </script>
+</body>
+</html>
